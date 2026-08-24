@@ -1,0 +1,2049 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maquette Trace 3D</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;1,9..144,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/earcut@2.2.4/src/earcut.min.js"></script>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#F7F3EE;--panel:#FFFFFF;--ink:#1A1714;--muted:#9A9490;
+  --border:#E2DAD0;--accent:#3D2B1F;--lime:#B8E04A;--warm:#E8784A;--r:10px;
+}
+body{background:var(--bg);color:var(--ink);font-family:'DM Mono',monospace;height:100vh;overflow:hidden}
+
+.main{height:100vh;display:grid;grid-template-columns:290px 1fr;overflow:hidden}
+
+/* PANEL */
+.panel{background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column}
+.topbar{padding:13px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.logo{font-family:'Fraunces',serif;font-size:1.1rem;color:var(--ink)}
+.logo em{color:var(--warm);font-style:italic}
+.sec{padding:14px 16px;border-bottom:1px solid var(--border)}
+.sec:last-child{border-bottom:none}
+.sec-t{font-size:.55rem;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.sec-t::before{content:'';width:4px;height:4px;background:var(--warm);border-radius:50%;flex-shrink:0}
+
+/* GPX */
+.gpx-drop{border:2px dashed var(--border);border-radius:var(--r);padding:18px 12px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg)}
+.gpx-drop:hover,.gpx-drop.over{border-color:var(--accent);background:rgba(61,43,31,.04)}
+.gpx-drop .ico{font-size:1.7rem;display:block;margin-bottom:6px}
+.gpx-drop p{font-size:.64rem;color:var(--muted);line-height:1.6}
+.gpx-drop strong{color:var(--accent)}
+.gpx-ok{display:none;background:rgba(184,224,74,.15);border:1.5px solid #8ab830;border-radius:var(--r);padding:8px 12px;align-items:center;gap:8px;font-size:.64rem;color:#3a5010}
+.gpx-ok.show{display:flex}
+.gpx-ok .fn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gpx-grid{display:none;grid-template-columns:1fr 1fr;gap:5px;margin-top:8px}
+.gpx-grid.show{display:grid}
+.gpx-card{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:6px 9px}
+.gpx-card-l{font-size:.52rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+.gpx-card-v{font-size:.78rem;color:var(--ink);margin-top:2px}
+.prof-wrap{background:var(--bg);border-radius:var(--r);border:1px solid var(--border);overflow:visible;height:60px;margin-top:10px;position:relative}
+#prof-svg{width:100%;height:100%;display:block}
+.prof-tooltip{
+  position:absolute;
+  bottom:calc(100% + 6px);
+  display:none;
+  background:var(--ink, #1c1a17);
+  color:#fff;
+  font-size:.62rem;
+  font-weight:500;
+  font-family:'DM Mono',monospace;
+  padding:4px 8px;
+  border-radius:5px;
+  white-space:nowrap;
+  pointer-events:none;
+  z-index:10;
+  box-shadow:0 2px 8px rgba(0,0,0,.25);
+}
+.prof-tooltip strong{font-weight:700;letter-spacing:.02em}
+.prof-tooltip::after{
+  content:'';
+  position:absolute;
+  top:100%;left:50%;
+  transform:translateX(-50%);
+  border:4px solid transparent;
+  border-top-color:var(--ink, #1c1a17);
+}
+
+/* SLIDERS */
+.ctrl{margin-bottom:12px}
+.ctrl:last-child{margin-bottom:0}
+.ctrl-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
+.ctrl-l{font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.ctrl-v{font-size:.7rem;color:var(--accent);font-weight:500}
+input[type=range]{-webkit-appearance:none;width:100%;height:3px;background:var(--border);border-radius:2px;outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--accent);border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.2);cursor:pointer;transition:transform .1s}
+input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2)}
+
+/* SWATCHES — fully opaque, no transparency */
+.sw-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+
+/* NOTCH POSITION BUTTONS */
+.tgl-pos{
+  flex:1;padding:5px 4px;
+  background:var(--border);border:1px solid transparent;
+  border-radius:5px;color:var(--muted);
+  font-family:'DM Mono',monospace;font-size:.6rem;font-weight:500;
+  cursor:pointer;transition:all .15s;text-align:center;
+}
+.tgl-pos.on{background:rgba(61,43,31,.1);border-color:var(--accent);color:var(--accent)}
+.tgl-row{display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:4px 0}
+.tgl-lbl{font-size:.62rem;color:var(--ink);letter-spacing:.04em}
+.tgl-hint{font-size:.55rem;color:var(--muted);margin-top:2px;line-height:1.4}
+.tgl{width:34px;height:18px;border-radius:10px;background:var(--border);position:relative;transition:background .2s;flex-shrink:0}
+.tgl.on{background:var(--accent)}
+.tgl::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#FFF;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.tgl.on::after{left:18px}
+
+.sw{width:28px;height:28px;border-radius:5px;cursor:pointer;border:2.5px solid transparent;transition:all .15s;position:relative;flex-shrink:0}
+.sw.on{border-color:var(--ink);transform:scale(1.12);z-index:1;box-shadow:0 0 0 1px white inset}
+.sw::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.62rem;font-weight:700;color:white;text-shadow:0 1px 3px rgba(0,0,0,.8);opacity:0}
+.sw.on::after{opacity:1}
+
+/* BUTTONS */
+.btn{width:100%;padding:10px;border:none;border-radius:8px;font-family:'DM Mono',monospace;font-size:.7rem;font-weight:500;cursor:pointer;letter-spacing:.03em;transition:all .15s;text-align:center}
+.btn-p{background:var(--accent);color:var(--bg)}
+.btn-p:hover{background:#2a1d14}
+.btn-s{background:var(--bg);color:var(--accent);border:1.5px solid var(--border)}
+.btn-s:hover{border-color:var(--accent)}
+.btn-l{background:var(--lime);color:var(--accent)}
+.btn-l:hover{background:#caf060}
+.act-btns{display:flex;flex-direction:column;gap:7px}
+
+/* VIEWPORT */
+.viewport{position:relative;background:#FFFFFF;overflow:hidden}
+.vpane{position:relative;background:#FFFFFF;width:100%;height:100%;overflow:hidden}
+.vlabel{position:absolute;top:8px;left:10px;font-size:.5rem;letter-spacing:.15em;text-transform:uppercase;color:rgba(61,43,31,.3);pointer-events:none}
+canvas{width:100%!important;height:100%!important;display:block}
+.vp-tools{position:absolute;bottom:10px;right:10px;display:flex;gap:4px}
+.vt{width:28px;height:28px;background:rgba(61,43,31,.07);border:1px solid rgba(61,43,31,.14);border-radius:6px;color:rgba(61,43,31,.45);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:.75rem;transition:all .15s;font-family:'DM Mono',monospace}
+.vt:hover{color:var(--accent);background:rgba(61,43,31,.14)}
+.vt.on{background:rgba(61,43,31,.1);border-color:var(--accent);color:var(--accent)}
+.hud{position:absolute;bottom:10px;left:10px;font-size:.5rem;color:rgba(61,43,31,.35);letter-spacing:.06em;line-height:1.9;pointer-events:none}
+.hud span{color:var(--accent)}
+.loader{position:absolute;inset:0;background:#FFFFFF;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:10;transition:opacity .4s}
+.loader.gone{opacity:0;pointer-events:none}
+.ring{width:32px;height:32px;border:2px solid #E0E0E0;border-top-color:var(--accent);border-radius:50%;animation:spin .85s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.lmsg{font-size:.58rem;color:var(--muted);letter-spacing:.14em;text-transform:uppercase}
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-thumb{background:var(--border)}
+
+/* SIZE CARDS */
+.size-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.size-card{
+  background:var(--bg);border:1.5px solid var(--border);
+  border-radius:8px;padding:8px 6px;text-align:center;
+  cursor:pointer;transition:all .15s;
+}
+.size-card:hover{border-color:var(--accent)}
+.size-card.on{border-color:var(--accent);background:rgba(61,43,31,.06)}
+.size-icon{font-size:1.2rem;margin-bottom:3px}
+.size-name{font-size:.68rem;font-weight:500;color:var(--ink)}
+.size-dims{font-size:.58rem;color:var(--muted);margin-top:2px}
+.size-price{font-size:.72rem;font-weight:600;color:var(--warm);margin-top:4px}
+
+/* RULER OVERLAY */
+.ruler{
+  position:absolute;pointer-events:none;
+  font-family:'DM Mono',monospace;
+}
+.ruler-w{
+  bottom:44px;left:50%;transform:translateX(-50%);
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+}
+.ruler-h{
+  right:14px;top:50%;transform:translateY(-50%);
+  display:flex;flex-direction:row;align-items:center;gap:3px;
+}
+.ruler-line{background:rgba(61,43,31,.5)}
+.ruler-line-h{width:1px;flex:1}
+.ruler-line-w{height:1px;flex:1}
+.ruler-label{
+  font-size:.55rem;color:rgba(61,43,31,.7);
+  background:rgba(255,255,255,.85);
+  padding:2px 6px;border-radius:4px;
+  border:1px solid rgba(61,43,31,.15);
+  white-space:nowrap;
+}
+.ruler-tick-row{display:flex;align-items:center;gap:2px;width:120px}
+.ruler-tick-col{display:flex;flex-direction:column;align-items:center;gap:2px;height:100px}
+.panel-toggle{
+  display:none;
+  position:fixed;
+  top:50%;
+  left:0;
+  transform:translateY(-50%);
+  z-index:200;
+  background:var(--accent);
+  color:white;
+  border:none;
+  padding:10px 7px;
+  cursor:pointer;
+  border-radius:0 8px 8px 0;
+  font-size:1rem;
+  line-height:1;
+  box-shadow:2px 0 8px rgba(0,0,0,.2);
+  transition:left .3s;
+}
+@media(max-width:700px){
+  .main{grid-template-columns:1fr}
+  .panel{
+    position:fixed;top:0;left:0;bottom:0;
+    width:290px;z-index:100;
+    transform:translateX(-100%);
+    transition:transform .3s;
+    box-shadow:4px 0 20px rgba(0,0,0,.15);
+  }
+  .panel.open{transform:translateX(0)}
+  .panel-toggle{display:block}
+  .panel-toggle.open{left:290px}
+  .viewport{grid-column:1;height:100vh}
+}
+
+</style>
+</head>
+<body>
+<button class="panel-toggle" id="panel-toggle" onclick="togglePanel()">
+  <svg id="toggle-icon" width="18" height="18" viewBox="0 0 18 18" fill="none">
+    <polyline points="6,3 12,9 6,15" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+</button>
+<div class="main">
+
+  <!-- PANEL -->
+  <div class="panel">
+    <div class="topbar">
+      <svg width="110" height="36" viewBox="0 0 110 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Alticraft logo: organic blob shape with 3 concentric rings -->
+        <g transform="translate(2,2)">
+          <!-- Outer dark ring -->
+          <path d="M16 4 C10 4 4 9 3 15 C2 20 5 26 9 29 C13 32 18 32 23 30 C27 28 30 25 31 21 C32 17 31 12 28 9 C25 6 21 4 16 4Z" fill="#3A3A38"/>
+          <!-- Gold middle ring -->
+          <path d="M16 7 C11 7 7 11 6 16 C5 20 8 25 12 27 C15 29 20 29 24 27 C27 25 29 22 29 18 C29 14 27 10 24 8 C21 6 18 7 16 7Z" fill="#C9922A"/>
+          <!-- Light inner ring -->
+          <path d="M16 10 C12 10 9 13 8 17 C7 21 10 24 13 26 C15 27 19 27 22 25 C24 24 26 21 26 18 C26 15 24 12 22 11 C20 9 18 10 16 10Z" fill="#E8E0CC"/>
+          <!-- Dark center fill -->
+          <path d="M16 13 C13 13 11 15 11 18 C11 21 13 23 16 23 C19 23 21 21 21 18 C21 15 19 13 16 13Z" fill="#3A3A38"/>
+        </g>
+        <!-- ALTICRAFT text -->
+        <text x="40" y="16" font-family="'DM Mono',monospace" font-size="8" font-weight="500" letter-spacing="1.5" fill="#1A1714">ALTI</text>
+        <text x="40" y="27" font-family="'DM Mono',monospace" font-size="8" font-weight="500" letter-spacing="1.5" fill="#C9922A">CRAFT</text>
+      </svg>
+      <button class="btn btn-l" id="btn-order-top" style="width:auto;padding:7px 14px;font-size:.68rem" onclick="cmdOrder()">Commander · 25 €</button>
+    </div>
+
+    <div class="sec">
+      <div class="sec-t">Fichier GPX</div>
+      <div class="gpx-drop" id="gpx-drop"
+        onclick="document.getElementById('gpx-file').click()"
+        ondragover="event.preventDefault();this.classList.add('over')"
+        ondragleave="this.classList.remove('over')"
+        ondrop="onDrop(event)">
+        <span class="ico">🗂</span>
+        <p><strong>Déposer votre fichier GPX</strong><br>ou cliquer pour parcourir</p>
+      </div>
+      <input type="file" id="gpx-file" accept=".gpx" style="display:none" onchange="loadGPX(this.files[0])">
+      <div class="gpx-ok" id="gpx-ok">
+        <span>✅</span><span class="fn" id="gpx-fname"></span>
+        <button class="btn btn-s" style="width:auto;padding:3px 9px;font-size:.6rem" onclick="clearGPX()">✕</button>
+      </div>
+      <div class="gpx-grid" id="gpx-grid">
+        <div class="gpx-card"><div class="gpx-card-l">Distance</div><div class="gpx-card-v" id="g-dist">—</div></div>
+        <div class="gpx-card"><div class="gpx-card-l">D+</div><div class="gpx-card-v" id="g-dplus">—</div></div>
+        <div class="gpx-card"><div class="gpx-card-l">Alt. max</div><div class="gpx-card-v" id="g-amax">—</div></div>
+        <div class="gpx-card"><div class="gpx-card-l">Points</div><div class="gpx-card-v" id="g-pts">—</div></div>
+      </div>
+      <div class="prof-wrap" id="prof-wrap" style="display:none">
+        <svg id="prof-svg" preserveAspectRatio="none"></svg>
+        <div class="prof-tooltip" id="prof-tooltip"></div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-t">Taille de la maquette</div>
+
+      <!-- Format presets -->
+      <div class="size-grid" id="size-grid">
+        <div class="size-card" onclick="selectSize(this,'keyring',55,55)">
+          <div class="size-icon">🔑</div>
+          <div class="size-name">Porte-clé</div>
+          <div class="size-dims">~5.5 × 5.5 cm</div>
+          <div class="size-price">10 €</div>
+        </div>
+        <div class="size-card on" onclick="selectSize(this,'normal',100,120)">
+          <div class="size-icon">🖼</div>
+          <div class="size-name">Normal</div>
+          <div class="size-dims">~10 × 12 cm</div>
+          <div class="size-price">25 €</div>
+        </div>
+        <div class="size-card" onclick="selectSize(this,'xl',150,180)">
+          <div class="size-icon">🗺</div>
+          <div class="size-name">XL</div>
+          <div class="size-dims">~15 × 18 cm</div>
+          <div class="size-price">50 €</div>
+        </div>
+      </div>
+
+      <!-- Sliders largeur / longueur (toujours visibles, liés par le ratio du modèle) -->
+      <div style="margin-top:12px">
+        <div class="ctrl">
+          <div class="ctrl-h">
+            <span class="ctrl-l">Largeur max</span>
+            <span class="ctrl-v" id="v-sw">100 mm</span>
+          </div>
+          <input type="range" min="30" max="300" step="5" value="100" id="range-sw"
+            oninput="setSize('w', +this.value); showDimensions()">
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-h">
+            <span class="ctrl-l">Longueur max</span>
+            <span class="ctrl-v" id="v-sh">120 mm</span>
+          </div>
+          <input type="range" min="30" max="300" step="5" value="120" id="range-sh"
+            oninput="setSize('h', +this.value); showDimensions()">
+        </div>
+      </div>
+
+      <!-- Dimensions réelles calculées -->
+      <div style="margin-top:6px;font-size:.6rem;color:var(--muted);line-height:1.7;background:var(--bg);border-radius:7px;padding:7px 10px;border:1px solid var(--border)">
+        📐 Dimensions réelles : <span id="real-dims" style="color:var(--accent);font-weight:500">—</span>
+        <br><span style="font-size:.55rem">Proportions conservées — pas de déformation</span>
+      </div>
+
+      <!-- Encoche porte-clé -->
+      <div id="encoche-wrap" style="margin-top:10px">
+        <div class="tgl-row" onclick="toggleSwitch_notch()">
+          <div>
+            <div class="tgl-lbl">Encoche porte-clé 🔗</div>
+            <div class="tgl-hint">Onglet en saillie sur le socle</div>
+          </div>
+          <div class="tgl" id="tgl-notch"></div>
+        </div>
+        <div id="notch-opts" style="display:none;margin-top:8px">
+          <div class="ctrl">
+            <div class="ctrl-h"><span class="ctrl-l">Diamètre trou</span><span class="ctrl-v" id="v-notch">4 mm</span></div>
+            <input type="range" min="2" max="8" step="0.5" value="4"
+              oninput="S.notchDiam=+this.value;el('v-notch').textContent=this.value+' mm';rebuild()">
+          </div>
+          <div class="ctrl">
+            <div class="ctrl-h"><span class="ctrl-l">Position sur le contour</span><span class="ctrl-v" id="v-notchpos">0 %</span></div>
+            <input type="range" min="0" max="1000" step="5" value="0" id="range-notchpos"
+              oninput="S.notchT=(+this.value)/1000;el('v-notchpos').textContent=Math.round(S.notchT*100)+' %';rebuild()">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="sec">
+      <div class="sec-t">Tracé</div>
+      <div class="ctrl">
+        <div class="ctrl-h"><span class="ctrl-l">Hauteur max</span><span class="ctrl-v" id="v-th">30 mm</span></div>
+        <input type="range" min="3" max="60" step="1" value="30"
+          oninput="S.traceMaxH=+this.value;el('v-th').textContent=this.value+' mm';rebuild()">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-h"><span class="ctrl-l">Largeur</span><span class="ctrl-v" id="v-tw">6 mm</span></div>
+        <input type="range" min="1" max="15" step="1" value="6"
+          oninput="S.traceW=+this.value;el('v-tw').textContent=this.value+' mm';rebuild()">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-h"><span class="ctrl-l">Lissage</span><span class="ctrl-v" id="v-sm">4</span></div>
+        <input type="range" min="0" max="40" step="1" value="4"
+          oninput="S.smooth=+this.value;el('v-sm').textContent=this.value;rebuild()">
+      </div>
+      <div style="margin-top:10px">
+        <div class="tgl-row" onclick="toggleSwitch_chevron()">
+          <div>
+            <div class="tgl-lbl">Chevron au sommet ^</div>
+            <div class="tgl-hint">Entaille traversante centrée sur le point culminant</div>
+          </div>
+          <div class="tgl" id="tgl-chevron"></div>
+        </div>
+        <div id="chevron-opts" style="display:none;margin-top:8px">
+          <div class="ctrl">
+            <div class="ctrl-h"><span class="ctrl-l">Largeur de l'entaille</span><span class="ctrl-v" id="v-chevlen">8 mm</span></div>
+            <input type="range" min="3" max="25" step="1" value="8"
+              oninput="S.chevronLen=+this.value;el('v-chevlen').textContent=this.value+' mm';rebuild()">
+          </div>
+          <div class="ctrl">
+            <div class="ctrl-h"><span class="ctrl-l">Profondeur</span><span class="ctrl-v" id="v-chevdepth">6 mm</span></div>
+            <input type="range" min="2" max="15" step="0.5" value="6"
+              oninput="S.chevronDepth=+this.value;el('v-chevdepth').textContent=this.value+' mm';rebuild()">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-t">Socle</div>
+      <div class="tgl-row" onclick="toggleNoBase()">
+        <div>
+          <div class="tgl-lbl">Sans socle</div>
+          <div class="tgl-hint">Tracé seul, sans plaque</div>
+        </div>
+        <div class="tgl" id="tgl-nobase"></div>
+      </div>
+      <div id="socle-opts">
+        <div class="ctrl">
+          <div class="ctrl-h"><span class="ctrl-l">Largeur totale</span><span class="ctrl-v" id="v-bw">10 mm</span></div>
+          <input type="range" min="1" max="25" step="1" value="10"
+            oninput="S.baseW=+this.value;el('v-bw').textContent=this.value+' mm';rebuild()">
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-h"><span class="ctrl-l">Épaisseur</span><span class="ctrl-v" id="v-bh">4 mm</span></div>
+          <input type="range" min="1" max="15" step="1" value="4"
+            oninput="S.baseH=+this.value;el('v-bh').textContent=this.value+' mm';rebuild()">
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-h"><span class="ctrl-l">Lissage contour</span><span class="ctrl-v" id="v-bsm">3</span></div>
+          <input type="range" min="0" max="20" step="1" value="3"
+            oninput="S.baseSmooth=+this.value;el('v-bsm').textContent=this.value;rebuild()">
+        </div>
+        <div class="tgl-row" id="row-closed" onclick="toggleClosedBase()">
+          <div>
+            <div class="tgl-lbl">Socle plein</div>
+            <div class="tgl-hint" id="hint-closed">Remplit l'intérieur des boucles</div>
+          </div>
+          <div class="tgl" id="tgl-closed"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-t">Couleur tracé</div>
+      <div class="sw-row" id="sw-trace"></div>
+    </div>
+
+    <div class="sec" id="sec-base-color">
+      <div class="sec-t">Couleur socle</div>
+      <div class="sw-row" id="sw-base"></div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-t">Actions</div>
+      <div class="act-btns">
+        <button class="btn btn-l" id="btn-order-bottom" onclick="cmdOrder()">🛒 Commander · 25 €</button>
+        <button class="btn btn-p" onclick="exportPNG()">📸 Exporter aperçu PNG</button>
+        <button class="btn btn-s" onclick="exportSTL()">⬇ Exporter STL</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEWPORT -->
+  <div class="viewport">
+    <div class="loader" id="loader">
+      <div class="ring"></div>
+      <div class="lmsg">Initialisation…</div>
+    </div>
+
+    <div class="vpane" id="pane-p">
+      <div class="vlabel">PERSPECTIVE · glisser + molette</div>
+      <canvas id="cv-p"></canvas>
+      <!-- Canvas 2D superposé pour les cotes en live -->
+      <canvas id="cv-dim" style="position:absolute;inset:0;pointer-events:none"></canvas>
+      <div class="vp-tools">
+        <button class="vt" id="btn-auto" onclick="toggleAuto()">⟳</button>
+        <button class="vt" onclick="setView('iso')">◈</button>
+        <button class="vt" onclick="setView('top')">⊤</button>
+        <button class="vt" onclick="resetCam()">⌖</button>
+      </div>
+      <div class="hud">ROT <span id="hud-r">0°</span> · ZOOM <span id="hud-z">6.0</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const el = id => document.getElementById(id);
+const MM = 1/30; // 1 scene unit = 30 mm (reference)
+
+// Calcule les unités scène par mm réel en sortie STL.
+// Tient compte du format cible (55mm, 100mm, 150mm...) pour que
+// "6mm" sur un slider = 6mm dans le fichier STL final.
+function getSPMM(pts){
+  if(!pts || pts.length < 2) return MM;
+  var xs = pts.map(function(p){return p.x});
+  var zs = pts.map(function(p){return p.z});
+  var dx = Math.max.apply(null,xs) - Math.min.apply(null,xs);
+  var dz = Math.max.apply(null,zs) - Math.min.apply(null,zs);
+  if(dx < 1e-6 && dz < 1e-6) return MM;
+  var modelWmm = dx / MM, modelDmm = dz / MM;
+  var planMax = Math.max(modelWmm, modelDmm);
+  var planMin = Math.min(modelWmm, modelDmm);
+  var targetMax = Math.max(S.sizeW, S.sizeH);
+  var targetMin = Math.min(S.sizeW, S.sizeH);
+  if(planMax < 0.01) return MM;
+  var scale = Math.min(targetMax / planMax, targetMin / (planMin || planMax));
+  return MM / scale;
+}
+
+const S = {
+  gpxPts:null, path2D:null, profile:null,
+  traceMaxH:30, traceW:6, smooth:4,
+  baseW:10, baseH:4, baseClosed:false, baseSmooth:3, noBase:false,
+  gpxLoaded: false,
+  sizeFormat:'normal', sizeW:100, sizeH:120,
+  notchEnabled: false, notchDiam: 4, notchT: 0,
+  chevronEnabled: false, chevronLen: 8, chevronDepth: 6,
+  traceColor:'#D72638', baseColor:'#2A2A2A',
+  rotX:.45, rotY:.3, camDist:7, autoRot:false,
+};
+
+// ── GPX ──────────────────────────────────────────────────────────────────
+function onDrop(e){
+  e.preventDefault();
+  el('gpx-drop').classList.remove('over');
+  const f=e.dataTransfer.files[0]; if(f) loadGPX(f);
+}
+
+function loadGPX(file){
+  if(!file) return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    const xml=new DOMParser().parseFromString(ev.target.result,'text/xml');
+    const nodes=xml.querySelectorAll('trkpt,rtept');
+    if(!nodes.length){alert('Aucun point GPX trouvé.');return;}
+    const pts=[];
+    nodes.forEach(n=>{
+      const lat=parseFloat(n.getAttribute('lat'));
+      const lon=parseFloat(n.getAttribute('lon'));
+      const eEl=n.querySelector('ele');
+      if(!isNaN(lat)&&!isNaN(lon)) pts.push({lat,lon,ele:eEl?parseFloat(eEl.textContent):0});
+    });
+    S.gpxPts=pts;
+    S.gpxLoaded=true;
+    computeStats(pts);
+    buildPath2D();
+    buildProfile();
+    drawSVGProfile();
+    el('gpx-drop').style.display='none';
+    el('gpx-ok').classList.add('show');
+    el('gpx-fname').textContent=file.name;
+    el('gpx-grid').classList.add('show');
+    el('prof-wrap').style.display='block';
+    rebuild();
+  };
+  r.readAsText(file);
+}
+
+// Dénivelé positif : une simple somme des deltas positifs point-à-point est
+// très sensible au bruit GPS/barométrique (chaque micro-oscillation est
+// comptée comme une montée), ce qui gonfle énormément le résultat sur des
+// traces bruitées. On lisse d'abord l'altitude sur une fenêtre glissante
+// basée sur la distance (indépendante de la densité de points du GPX), puis
+// on applique un seuil d'hystérésis pour ignorer le bruit résiduel — la
+// même logique que celle utilisée par Strava/Garmin/IGN pour ce calcul.
+function computeElevationGain(pts){
+  const n = pts.length;
+  if(n < 2) return 0;
+  const WINDOW_M  = 25; // demi-fenêtre de lissage (m)
+  const MIN_STEP  = 2;  // seuil d'hystérésis (m) — ignore le bruit résiduel
+
+  // Distances cumulées le long du tracé (m)
+  const cum = [0];
+  for(let i=1;i<n;i++){
+    const dlat=(pts[i].lat-pts[i-1].lat)*111320;
+    const dlng=(pts[i].lon-pts[i-1].lon)*111320*Math.cos(pts[i].lat*Math.PI/180);
+    cum.push(cum[i-1] + Math.hypot(dlat,dlng));
+  }
+
+  // Lissage par moyenne glissante (fenêtre en distance, pas en nb de points)
+  const smoothed = new Array(n);
+  let lo = 0, hi = 0, sum = pts[0].ele;
+  for(let i=0; i<n; i++){
+    while(hi < n-1 && cum[hi+1]-cum[i] <= WINDOW_M){ hi++; sum += pts[hi].ele; }
+    while(lo < i && cum[i]-cum[lo] > WINDOW_M){ sum -= pts[lo].ele; lo++; }
+    smoothed[i] = sum/(hi-lo+1);
+  }
+
+  // Hystérésis : on ne cumule une montée que si elle dépasse le seuil,
+  // ce qui élimine le bruit résiduel sans effacer les vrais reliefs
+  let dplus = 0, ref = smoothed[0];
+  for(let i=1; i<n; i++){
+    const dh = smoothed[i] - ref;
+    if(dh > MIN_STEP){ dplus += dh; ref = smoothed[i]; }
+    else if(dh < -MIN_STEP){ ref = smoothed[i]; }
+  }
+  return dplus;
+}
+
+function computeStats(pts){
+  let dist=0,amin=Infinity,amax=-Infinity;
+  pts.forEach((p,i)=>{
+    if(p.ele<amin) amin=p.ele; if(p.ele>amax) amax=p.ele;
+    if(i>0){
+      const dlat=(p.lat-pts[i-1].lat)*111000;
+      const dlng=(p.lon-pts[i-1].lon)*111000*Math.cos(p.lat*Math.PI/180);
+      dist+=Math.sqrt(dlat*dlat+dlng*dlng);
+    }
+  });
+  const dplus = computeElevationGain(pts);
+  el('g-dist').textContent=(dist/1000).toFixed(1)+' km';
+  el('g-dplus').textContent='+'+Math.round(dplus)+' m';
+  el('g-amax').textContent=Math.round(amax)+' m';
+  el('g-pts').textContent=pts.length;
+}
+
+function buildPath2D(){
+  const pts=S.gpxPts;
+  const lats=pts.map(p=>p.lat),lons=pts.map(p=>p.lon);
+  const minLat=Math.min(...lats),maxLat=Math.max(...lats);
+  const minLon=Math.min(...lons),maxLon=Math.max(...lons);
+  const clat=(minLat+maxLat)/2,clon=(minLon+maxLon)/2;
+  const cos=Math.cos(clat*Math.PI/180);
+  const span=Math.max((maxLat-minLat)||.001,(maxLon-minLon)*cos||.001);
+  const scale=7/span;
+  const step=Math.max(1,Math.floor(pts.length/500));
+  const raw=[];
+  for(let i=0;i<pts.length;i+=step){
+    const p=pts[i];
+    raw.push({x:(p.lon-clon)*cos*scale, z:-(p.lat-clat)*scale, ele:p.ele});
+  }
+  S.path2D=smoothXZ(raw,3);
+}
+
+function buildProfile(){
+  if(!S.path2D) return;
+  const eles=S.path2D.map(p=>p.ele);
+  const mn=Math.min(...eles),mx=Math.max(...eles),range=mx-mn||1;
+  S.profile=smoothArr(S.path2D.map(p=>(p.ele-mn)/range),S.smooth);
+}
+
+function smoothXZ(pts,n){
+  let p=pts.map(x=>({...x}));
+  for(let k=0;k<n;k++){
+    const s=[];
+    for(let i=0;i<p.length;i++){
+      const a=p[Math.max(0,i-1)],b=p[i],c=p[Math.min(p.length-1,i+1)];
+      s.push({x:(a.x+b.x+c.x)/3,z:(a.z+b.z+c.z)/3,ele:b.ele});
+    }
+    p=s;
+  }
+  return p;
+}
+
+function smoothArr(arr,n){
+  let p=[...arr];
+  for(let k=0;k<n;k++){
+    const s=[];
+    for(let i=0;i<p.length;i++)
+      s.push((p[Math.max(0,i-1)]+p[i]+p[Math.min(p.length-1,i+1)])/3);
+    p=s;
+  }
+  return p;
+}
+
+function clearGPX(){
+  S.gpxPts=null;S.path2D=null;S.profile=null;S.gpxLoaded=false;
+  el('gpx-drop').style.display='';
+  el('gpx-ok').classList.remove('show');
+  el('gpx-grid').classList.remove('show');
+  el('prof-wrap').style.display='none';
+  rebuild();
+}
+
+function drawSVGProfile(){
+  if(!S.profile) return;
+  const prof=S.profile,svg=el('prof-svg');
+  const W=280,H=60,pad=4;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  const step=W/(prof.length-1);
+  const coords=prof.map((v,i)=>`${i*step},${H-pad-v*(H-pad*2)}`).join(' ');
+  svg.innerHTML=`
+    <polygon points="${coords} ${W},${H} 0,${H}" fill="${S.traceColor}" opacity=".2"/>
+    <polyline points="${coords}" fill="none" stroke="${S.traceColor}" stroke-width="2" stroke-linejoin="round"/>
+    <line id="prof-vline" x1="0" y1="0" x2="0" y2="${H}" stroke="${S.traceColor}" stroke-width="1" stroke-dasharray="2,2" opacity="0"/>
+    <circle id="prof-dot" cx="0" cy="0" r="3.5" fill="${S.traceColor}" stroke="white" stroke-width="1.5" opacity="0"/>
+  `;
+
+  // Bind mouse events on the SVG
+  svg.onmousemove = (ev) => {
+    const rect = svg.getBoundingClientRect();
+    const px = ev.clientX - rect.left;
+    const t = Math.max(0, Math.min(1, px / rect.width));
+    showProfileMarker(t);
+  };
+  svg.onmouseleave = () => hideProfileMarker();
+}
+
+// Affiche le marqueur du profil + le marqueur 3D synchronisé
+function showProfileMarker(t){
+  if(!S.profile || !S.path2D) return;
+
+  // Index correspondant dans le profil
+  const N = S.profile.length;
+  const idxF = t * (N - 1);
+  const i0 = Math.floor(idxF);
+  const i1 = Math.min(N - 1, i0 + 1);
+  const f  = idxF - i0;
+  const v  = S.profile[i0] * (1 - f) + S.profile[i1] * f;
+
+  // Position SVG
+  const W = 280, H = 60, pad = 4;
+  const x = t * W;
+  const y = H - pad - v * (H - pad * 2);
+
+  const dot = el('prof-dot');
+  const vline = el('prof-vline');
+  if(dot){
+    dot.setAttribute('cx', x);
+    dot.setAttribute('cy', y);
+    dot.setAttribute('opacity', '1');
+  }
+  if(vline){
+    vline.setAttribute('x1', x);
+    vline.setAttribute('x2', x);
+    vline.setAttribute('opacity', '0.6');
+  }
+
+  // Tooltip avec altitude & distance
+  showTooltip(t, i0, i1, f);
+
+  // Marqueur 3D synchronisé
+  updateScene3DMarker(t);
+}
+
+function hideProfileMarker(){
+  const dot = el('prof-dot');
+  const vline = el('prof-vline');
+  if(dot) dot.setAttribute('opacity', '0');
+  if(vline) vline.setAttribute('opacity', '0');
+  el('prof-tooltip').style.display = 'none';
+  hideScene3DMarker();
+}
+
+function showTooltip(t, i0, i1, f){
+  const tt = el('prof-tooltip');
+  if(!tt || !S.gpxPts) return;
+  // interpoler altitude depuis les vrais points GPX
+  const pts = S.gpxPts;
+  const idxG = t * (pts.length - 1);
+  const g0 = Math.floor(idxG);
+  const g1 = Math.min(pts.length - 1, g0 + 1);
+  const fg = idxG - g0;
+  const ele = pts[g0].ele * (1 - fg) + pts[g1].ele * fg;
+
+  tt.innerHTML = `<strong>${Math.round(ele)} m</strong>`;
+  tt.style.display = 'block';
+
+  // Position tooltip au-dessus du dot
+  const profWrap = el('prof-wrap');
+  const wrapRect = profWrap.getBoundingClientRect();
+  const xPx = t * wrapRect.width;
+  tt.style.left = Math.max(0, Math.min(wrapRect.width - 60, xPx - 30)) + 'px';
+}
+
+// Marqueur 3D : petite sphère brillante au-dessus du tracé
+function updateScene3DMarker(t){
+  if(!S.path2D || !S.profile) return;
+
+  const N = S.path2D.length;
+  const idxF = t * (N - 1);
+  const i0 = Math.floor(idxF);
+  const i1 = Math.min(N - 1, i0 + 1);
+  const f  = idxF - i0;
+
+  const x = (S.path2D[i0].x * (1-f) + S.path2D[i1].x * f);
+  const z = (S.path2D[i0].z * (1-f) + S.path2D[i1].z * f);
+  const v = S.profile[i0] * (1-f) + S.profile[i1] * f;
+
+  const spmm_hover = getSPMM(S.path2D);
+  const traceH = S.traceMaxH * spmm_hover;
+  const baseH  = S.baseH * spmm_hover;
+  const yTop   = v * traceH; // sommet du tracé à cet endroit
+
+  // Recentrage : même cx/cz que les meshes
+  const cxAll = S.path2D.reduce((s,p)=>s+p.x,0)/N;
+  const czAll = S.path2D.reduce((s,p)=>s+p.z,0)/N;
+
+  let marker = scene.getObjectByName('hover-marker');
+  if(!marker){
+    const g = new THREE.SphereGeometry(0.06, 16, 16);
+    const m = new THREE.MeshStandardMaterial({
+      color: 0xFFFFFF,
+      emissive: 0xFFFFFF,
+      emissiveIntensity: 0.6,
+      roughness: 0.3,
+    });
+    marker = new THREE.Mesh(g, m);
+    marker.name = 'hover-marker';
+    scene.add(marker);
+
+    // ligne verticale qui descend jusqu'au socle
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, -1, 0),
+    ]);
+    const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({
+      color: 0x000000, opacity: 0.4, transparent: true,
+    }));
+    line.name = 'hover-line';
+    scene.add(line);
+  }
+
+  marker.visible = true;
+  marker.position.set(x - cxAll, yTop + 0.04, z - czAll);
+
+  const line = scene.getObjectByName('hover-line');
+  if(line){
+    line.visible = true;
+    line.position.set(x - cxAll, 0, z - czAll);
+    line.scale.y = yTop + baseH;
+  }
+}
+
+function hideScene3DMarker(){
+  const m = scene?.getObjectByName('hover-marker');
+  const l = scene?.getObjectByName('hover-line');
+  if(m) m.visible = false;
+  if(l) l.visible = false;
+}
+
+// ── NORMALS ───────────────────────────────────────────────────────────────
+function normals2D(pts,closed){
+  const N=pts.length;
+  return pts.map((p,i)=>{
+    const pr=closed?pts[(i-1+N)%N]:pts[Math.max(0,i-1)];
+    const nx=closed?pts[(i+1)%N]:pts[Math.min(N-1,i+1)];
+    let dx=nx.x-pr.x,dz=nx.z-pr.z;
+    const len=Math.sqrt(dx*dx+dz*dz)||1;
+    return {nx:dz/len,nz:-dx/len};
+  });
+}
+
+// ── THREE.JS ──────────────────────────────────────────────────────────────
+let rendP,scene,camP;
+let isDrag=false,mx=0,my=0;
+
+function initThree(){
+  scene=new THREE.Scene();
+  scene.background=new THREE.Color(0xFFFFFF);
+
+  scene.add(new THREE.AmbientLight(0xFFFFFF, 0.9));
+  const sun = new THREE.DirectionalLight(0xFFFFFF, 0.55);
+  sun.position.set(4, 8, 5); sun.castShadow = false; scene.add(sun);
+  const rim = new THREE.DirectionalLight(0xFFFFFF, 0.3);
+  rim.position.set(-4, 5, -5); scene.add(rim);
+
+  rendP=new THREE.WebGLRenderer({canvas:el('cv-p'),antialias:true,preserveDrawingBuffer:true});
+  rendP.setPixelRatio(Math.min(devicePixelRatio,2));
+  rendP.shadowMap.enabled=false;
+  rendP.toneMapping=THREE.NoToneMapping;
+  camP=new THREE.PerspectiveCamera(42,1,.01,200);
+
+  const cvP=el('cv-p');
+  cvP.addEventListener('mousedown',e=>{isDrag=true;mx=e.clientX;my=e.clientY;});
+  cvP.addEventListener('touchstart',e=>{isDrag=true;mx=e.touches[0].clientX;my=e.touches[0].clientY;},{passive:true});
+  window.addEventListener('mousemove',e=>{
+    if(!isDrag) return;
+    S.rotY+=(e.clientX-mx)*.007;
+    S.rotX=Math.max(-1.45,Math.min(1.45,S.rotX+(e.clientY-my)*.006));
+    mx=e.clientX;my=e.clientY;
+  });
+  window.addEventListener('touchmove',e=>{
+    if(!isDrag) return;
+    S.rotY+=(e.touches[0].clientX-mx)*.007;
+    S.rotX=Math.max(-1.45,Math.min(1.45,S.rotX+(e.touches[0].clientY-my)*.006));
+    mx=e.touches[0].clientX;my=e.touches[0].clientY;
+  },{passive:true});
+  window.addEventListener('mouseup',()=>isDrag=false);
+  window.addEventListener('touchend',()=>isDrag=false);
+  cvP.addEventListener('wheel',e=>{
+    S.camDist=Math.max(2,Math.min(22,S.camDist+e.deltaY*.008));
+    e.preventDefault();
+  },{passive:false});
+
+  window.addEventListener('resize',resizeAll);
+  resizeAll();
+  rebuild();
+  animate();
+  initDimCanvas();
+  setTimeout(()=>el('loader').classList.add('gone'),500);
+}
+
+function resizeAll(){
+  resize(rendP,camP,'pane-p',true);
+}
+function resize(rend,cam,pid,persp){
+  const p=el(pid); if(!p) return;
+  const w=p.clientWidth,h=p.clientHeight;
+  rend.setSize(w,h,false);
+  if(persp){cam.aspect=w/h;cam.updateProjectionMatrix();}
+}
+
+// ── GEOMETRY ─────────────────────────────────────────────────────────────
+// Y=0 = interface tracé/socle. Tracé monte vers +Y. Socle descend vers -Y.
+// Les deux utilisent le MÊME centroïde (moyenne des pts) → alignement garanti.
+// ─────────────────────────────────────────────────────────────────────────
+
+function killMesh(...names){
+  names.forEach(n=>{
+    const o=scene.getObjectByName(n);
+    if(!o) return;
+    scene.remove(o);
+    o.geometry?.dispose();
+    Array.isArray(o.material)?o.material.forEach(m=>m.dispose()):o.material?.dispose();
+  });
+}
+
+let rebTimer;
+function rebuild(){clearTimeout(rebTimer);rebTimer=setTimeout(function(){ _rebuild(); updateClosedBaseAvailability(); },0);}
+
+function _rebuild(){
+  killMesh('trace','base','te','be','hover-marker','hover-line','notch','notch-wire');
+  if(!S.gpxLoaded){ buildDemo(); return; }
+  buildProfile();
+  const spmm   = getSPMM(S.path2D);
+  S.buildSPMM  = spmm; // mémoriser le scale EXACT utilisé pour la géométrie
+  const traceH = S.traceMaxH*spmm;
+  const halfW  = (S.traceW/2)*spmm;
+  const baseH  = S.baseH*spmm;
+  const baseW  = S.baseW*spmm;
+  const pts = S.path2D;
+  const cx = pts.reduce((s,p)=>s+p.x,0)/pts.length;
+  const cz = pts.reduce((s,p)=>s+p.z,0)/pts.length;
+  makeTrace(pts, S.profile, false, traceH, halfW, cx, cz);
+  if(!S.noBase) makeBase(pts, false, halfW, baseH, baseW, cx, cz);
+  if(S.notchEnabled) buildNotch(cx, cz);
+}
+
+// TRACE — ruban 3D extrudé selon le profil altimétrique
+function makeTrace(pts, prof, closed, traceH, halfW, cx, cz){
+  const N    = pts.length;
+  const nors = normals2D(pts, closed);
+  const pos  = [], idx = [];
+  const vi   = i => i*8; // 8 sommets par section : bottom(0/1), gapBot(2/3), gapTop(4/5), top(6/7) — L/R
+
+  // Le tracé POSE sur le socle à Y=0 exactement. Pas de pénétration (= pas de non-manifold).
+  // Hauteur minimale pour éviter les arêtes dégénérées.
+  const spmm  = getSPMM(pts);
+  const MIN_H = 0.5 * spmm;
+
+  // ── Chevron (^ , V inversé) au point culminant ────────────────────────
+  // Petite entaille nette, en forme de coin, qui traverse le ruban de part
+  // en part (toute la largeur), centrée sur le point le plus haut du
+  // tracé — comme un marqueur gravé perpendiculairement à la crête.
+  // Un toit épais reste intact au-dessus (la pointe du sommet n'est jamais
+  // entaillée), et l'entaille a une profondeur LIMITÉE : elle ne descend
+  // jamais jusqu'au socle, du matériau plein reste toujours en dessous.
+  let taper = null;
+  let capT = 0, depthT = 0, tipT = 0;
+  if(S.chevronEnabled && N > 2){
+    let iPk = 0;
+    for(let i=1;i<N;i++) if(prof[i % prof.length] > prof[iPk % prof.length]) iPk = i;
+    const cum = [0];
+    for(let i=1;i<N;i++) cum.push(cum[i-1] + Math.hypot(pts[i].x-pts[i-1].x, pts[i].z-pts[i-1].z));
+    const dPk  = cum[iPk];
+    const half = Math.max((S.chevronLen||8)/2 * spmm, spmm*0.8);
+    const hPk  = Math.max(MIN_H, prof[iPk % prof.length] * traceH);
+    // Toit plus épais => l'entaille reste positionnée bas dans le ruban
+    capT   = Math.min(7*spmm, hPk*0.55);
+    // Décalage vertical : abaisse toute l'entaille, pointe incluse
+    tipT   = Math.min(5*spmm, hPk*0.28);
+    depthT = Math.min((S.chevronDepth||6)*spmm, hPk*0.3);  // profondeur limitée, ne touche jamais le socle
+    taper = new Array(N);
+    for(let i=0;i<N;i++){
+      const d = Math.min(1, Math.abs(cum[i]-dPk)/half);
+      // Profil NET : arêtes franches, falloff linéaire (pas de lissage)
+      taper[i] = 1 - d;
+    }
+  }
+
+  for(let i=0; i<N; i++){
+    const p=pts[i], n=nors[i];
+    const h = Math.max(MIN_H, prof[i % prof.length] * traceH);
+    const lx=p.x-n.nx*halfW-cx,  lz=p.z-n.nz*halfW-cz;
+    const rx=p.x+n.nx*halfW-cx,  rz=p.z+n.nz*halfW-cz;
+
+    let gapBot = h, gapTop = h;
+    if(taper && taper[i] > 0){
+      const t = taper[i];
+      // CHEVRON INVERSÉ : l'entaille est haute au centre et plonge vers les bords
+      const apex  = Math.max(MIN_H*2, h - tipT - capT*(1 - t));
+      gapTop = Math.min(h - MIN_H*0.5, apex);
+      gapBot = Math.max(MIN_H, gapTop - depthT*t);
+    }
+
+
+    pos.push(
+      lx, 0, lz,           // 0 bottom-left  (Y=0 = haut du socle)
+      rx, 0, rz,           // 1 bottom-right
+      lx, gapBot, lz,      // 2 gapBottom-left  (haut de la jambe basse)
+      rx, gapBot, rz,      // 3 gapBottom-right
+      lx, gapTop, lz,      // 4 gapTop-left     (dessous du toit résiduel)
+      rx, gapTop, rz,      // 5 gapTop-right
+      lx, h, lz,           // 6 top-left
+      rx, h, rz            // 7 top-right
+    );
+  }
+
+  const Mseg = closed ? N : N-1;
+  for(let i=0; i<Mseg; i++){
+    const j=(i+1)%N;
+    const b=vi(i), e=vi(j);
+    const hasGap = (taper && (taper[i]>0 || taper[j]>0));
+
+    idx.push(b+6,b+7,e+6,  b+7,e+7,e+6);   // dessus (crête, jamais tranchée)
+    idx.push(b+0,e+0,b+1,  b+1,e+0,e+1);   // dessous
+    idx.push(b+0,b+2,e+0,  b+2,e+2,e+0);   // paroi gauche — jambe basse
+    idx.push(b+1,e+1,b+3,  b+3,e+1,e+3);   // paroi droite — jambe basse
+    idx.push(b+4,b+6,e+4,  b+6,e+6,e+4);   // paroi gauche — toit résiduel
+    idx.push(b+5,e+5,b+7,  b+7,e+5,e+7);   // paroi droite — toit résiduel
+    if(hasGap){
+      idx.push(b+2,b+3,e+2,  b+3,e+3,e+2); // dessus de la jambe (face exposée dans l'entaille)
+      idx.push(b+4,e+4,b+5,  b+5,e+4,e+5); // dessous du toit (face exposée dans l'entaille)
+    }
+  }
+  if(!closed){
+    idx.push(vi(0)+0,vi(0)+1,vi(0)+6, vi(0)+1,vi(0)+7,vi(0)+6);
+    const L=N-1;
+    idx.push(vi(L)+0,vi(L)+6,vi(L)+1, vi(L)+1,vi(L)+6,vi(L)+7);
+  }
+
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+
+  var traceMat = new THREE.MeshStandardMaterial({
+    color: S.traceColor,
+    roughness: 0.6,
+    metalness: 0,
+    side: THREE.DoubleSide,
+  });
+  const mesh=new THREE.Mesh(geo, traceMat);
+  mesh.name='trace';
+  scene.add(mesh);
+  addEdges('te', geo, 0.25);
+}
+
+// BASE — plaque pleine qui suit le tracé (bande tampon)
+// Utilise des normales fortement lissées + offset adaptatif pour éviter
+// les auto-intersections quand baseW est grand.
+function makeBase(pts, closed, halfW, baseH, baseW, cx, cz){
+  const N = pts.length;
+  if(N < 2) return;
+
+  const spmm = getSPMM(pts) || 1;
+  const off  = Math.max(halfW + 0.3*spmm, baseW * 0.5);
+  const GAP  = 0; // aucun espace entre tracé (Y=0) et socle (Y=0)
+  const yT = -GAP, yB = -baseH;
+
+  // ── Spine lissée SANS dérive (Taubin) ────────────────────────────────
+  const orig = pts.map(p => ({ x: p.x - cx, z: p.z - cz }));
+  let sp = orig.map(p => ({ x:p.x, z:p.z }));
+  const passes = 20 + (S.baseSmooth || 0) * 8;
+  const LAMBDA = 0.5, MU = -0.52;
+  for(let pass = 0; pass < passes; pass++){
+    let tmp = [];
+    for(let i = 0; i < N; i++){
+      const a = sp[Math.max(0,i-1)], b = sp[i], c = sp[Math.min(N-1,i+1)];
+      const lx = (a.x + c.x)/2 - b.x, lz = (a.z + c.z)/2 - b.z;
+      tmp.push({ x: b.x + LAMBDA*lx, z: b.z + LAMBDA*lz });
+    }
+    tmp[0] = sp[0]; tmp[N-1] = sp[N-1];
+    sp = tmp;
+    tmp = [];
+    for(let i = 0; i < N; i++){
+      const a = sp[Math.max(0,i-1)], b = sp[i], c = sp[Math.min(N-1,i+1)];
+      const lx = (a.x + c.x)/2 - b.x, lz = (a.z + c.z)/2 - b.z;
+      tmp.push({ x: b.x + MU*lx, z: b.z + MU*lz });
+    }
+    tmp[0] = sp[0]; tmp[N-1] = sp[N-1];
+    sp = tmp;
+  }
+
+  // ── Rééchantillonnage uniforme dense ──────────────────────────────────
+  // Un point tous les ~off/3 → segments très courts → boîtes quasi-invisibles
+  let cum2 = [0];
+  for(let i = 1; i < N; i++)
+    cum2.push(cum2[i-1] + Math.hypot(sp[i].x-sp[i-1].x, sp[i].z-sp[i-1].z));
+  const spL = cum2[N-1];
+  const stepSize = Math.max(spL/800, off * 0.12); // max 800 pts, min off/8
+  const M2 = Math.ceil(spL / stepSize);
+  const spR = [];
+  for(let k = 0; k <= M2; k++){
+    const d = (spL * k) / M2;
+    let i = 0;
+    while(i < N-2 && cum2[i+1] < d) i++;
+    const f = (d - cum2[i]) / ((cum2[i+1]-cum2[i]) || 1);
+    spR.push({
+      x: sp[i].x + (sp[i+1].x - sp[i].x) * f,
+      z: sp[i].z + (sp[i+1].z - sp[i].z) * f,
+    });
+  }
+  // Remplacer sp par la version rééchantillonnée
+  const spFinal = spR;
+  const NF = spFinal.length;
+
+  // Stocker la spine lissée pour l'encoche
+  S.baseSpine = spFinal;
+  S.baseOff   = off;
+
+  // ── Le socle = union de solides convexes qui se chevauchent ───────────
+  const pos = [], idx = [];
+  let vb = 0;
+
+  // — Boîte par segment —
+  for(let i = 0; i < NF-1; i++){
+    const ax=spFinal[i].x, az=spFinal[i].z;
+    const bx2=spFinal[i+1].x, bz2=spFinal[i+1].z;
+    let dx=bx2-ax, dz=bz2-az;
+    const dl=Math.hypot(dx,dz);
+    if(dl < 1e-7) continue;
+    dx/=dl; dz/=dl;
+    const nx=-dz, nz=dx;
+
+    const C=[
+      [ax+nx*off, az+nz*off],
+      [bx2+nx*off, bz2+nz*off],
+      [bx2-nx*off, bz2-nz*off],
+      [ax-nx*off, az-nz*off],
+    ];
+    for(let k=0;k<4;k++) pos.push(C[k][0], yT, C[k][1]);
+    for(let k=0;k<4;k++) pos.push(C[k][0], yB, C[k][1]);
+
+    const b=vb;
+    idx.push(b,b+2,b+1,  b,b+3,b+2);
+    idx.push(b+4,b+5,b+6,  b+4,b+6,b+7);
+    for(let k=0;k<4;k++){
+      const nk=(k+1)%4;
+      idx.push(b+k, b+4+k, b+nk,  b+nk, b+4+k, b+4+nk);
+    }
+    vb+=8;
+  }
+
+  // — Cylindre par sommet —
+  const CSEG=48;
+  for(let i = 0; i < NF; i++){
+    const px=spFinal[i].x, pz=spFinal[i].z;
+    const b=vb;
+    pos.push(px, yT, pz);
+    pos.push(px, yB, pz);
+    for(let k=0;k<CSEG;k++){
+      const a=(k/CSEG)*Math.PI*2;
+      const cxp=px+Math.cos(a)*off, czp=pz+Math.sin(a)*off;
+      pos.push(cxp, yT, czp);
+      pos.push(cxp, yB, czp);
+    }
+    for(let k=0;k<CSEG;k++){
+      const nk=(k+1)%CSEG;
+      const t0=b+2+k*2, t1=b+2+nk*2;
+      const o0=b+3+k*2, o1=b+3+nk*2;
+      idx.push(b, t0, t1);
+      idx.push(b+1, o1, o0);
+      idx.push(t0, o0, t1,  t1, o0, o1);
+    }
+    vb += 2 + CSEG*2;
+  }
+
+  // — Socle plein : remplir l'intérieur de la boucle —
+  if(S.baseClosed && NF >= 4){
+    const loop = spFinal.map(p=>[p.x, p.z]);
+    let area=0;
+    for(let i=0;i<loop.length;i++){
+      const j=(i+1)%loop.length;
+      area += loop[i][0]*loop[j][1] - loop[j][0]*loop[i][1];
+    }
+    let fill = area < 0 ? loop.slice().reverse() : loop;
+    const flat = fill.flatMap(p=>[p[0],p[1]]);
+    const tri = earcut(flat);
+    if(tri && tri.length){
+      const FM=fill.length, fb=vb;
+      fill.forEach(p=>pos.push(p[0], yT, p[1]));
+      fill.forEach(p=>pos.push(p[0], yB, p[1]));
+      for(let i=0;i<tri.length;i+=3) idx.push(fb+tri[i],fb+tri[i+1],fb+tri[i+2]);
+      for(let i=0;i<tri.length;i+=3) idx.push(fb+FM+tri[i+2],fb+FM+tri[i+1],fb+FM+tri[i]);
+      for(let i=0;i<FM;i++){
+        const ni=(i+1)%FM;
+        idx.push(fb+i,fb+ni,fb+FM+i, fb+ni,fb+FM+ni,fb+FM+i);
+      }
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+
+  // Couleur plate uniforme = aucun artefact de shading, rendu net et propre
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    color: S.baseColor,
+    side: THREE.DoubleSide,
+  }));
+  mesh.name = 'base';
+  scene.add(mesh);
+
+  // Arêtes : uniquement le rebord HORIZONTAL haut et bas (pas les côtés)
+  const eg = new THREE.EdgesGeometry(geo, 30);
+  const egp = eg.attributes.position.array;
+  const ep = [];
+  for(let i = 0; i < egp.length; i += 6){
+    if(Math.abs(egp[i+1] - egp[i+4]) < 1e-4){ // arête horizontale uniquement
+      ep.push(egp[i],egp[i+1],egp[i+2], egp[i+3],egp[i+4],egp[i+5]);
+    }
+  }
+  const egeo = new THREE.BufferGeometry();
+  egeo.setAttribute('position', new THREE.Float32BufferAttribute(ep, 3));
+  const em = new THREE.LineSegments(egeo, new THREE.LineBasicMaterial({
+    color: 0x000000, opacity: 0.18, transparent: true,
+  }));
+  em.name = 'be';
+  scene.add(em);
+
+  // ── Données pour l'encoche ────────────────────────────────────────────
+  S.baseSpine  = sp;
+  S.baseOff    = off;
+  S.baseHeight = baseH;
+  const nors = normals2D(pts, false);
+  // Contour basé sur spFinal rééchantillonné (pour l'encoche)
+  const oR2 = spFinal.map((p,i)=>{
+    const ii = Math.min(nors.length-1, Math.round(i*(N-1)/(NF-1)));
+    return [p.x + nors[ii].nx*off, p.z + nors[ii].nz*off];
+  });
+  const oL2 = spFinal.map((p,i)=>{
+    const ii = Math.min(nors.length-1, Math.round(i*(N-1)/(NF-1)));
+    return [p.x - nors[ii].nx*off, p.z - nors[ii].nz*off];
+  });
+  S.baseContour = [...oR2, ...oL2.slice().reverse()];
+}
+
+// Center geometry in XZ only — NEVER shift Y
+function centerXZ(geo){
+  geo.computeBoundingBox();
+  const c=new THREE.Vector3();
+  geo.boundingBox.getCenter(c);
+  geo.translate(-c.x,0,-c.z); // Y=0 → no shift
+}
+
+function addEdges(name,geo,opacity){
+  const eg=new THREE.EdgesGeometry(geo,20);
+  const m=new THREE.LineSegments(eg,new THREE.LineBasicMaterial({color:0x111111,opacity,transparent:true}));
+  m.name=name; scene.add(m);
+}
+
+// ── DEMO ──────────────────────────────────────────────────────────────────
+function buildDemo(){
+  const N = 280;
+  const path = [], eles = [];
+
+  // Tracé linéaire style traversée alpine (de gauche à droite avec méandres)
+  // Le chemin progresse principalement sur l'axe X avec des ondulations sur Z
+  for(let i = 0; i < N; i++){
+    const t = i / (N - 1); // 0 → 1
+
+    // Progression linéaire avec des lacets naturels
+    const x = (t - 0.5) * 9; // -4.5 → +4.5 (tracé étendu)
+    const z = Math.sin(t * Math.PI * 2.8) * 1.1
+            + Math.cos(t * Math.PI * 5.2) * 0.45
+            + Math.sin(t * Math.PI * 9.1) * 0.18
+            + Math.cos(t * Math.PI * 1.3) * 0.6;
+
+    // Altitude réaliste en mètres (simulée)
+    const base  = 800;  // altitude de départ
+    // montée progressive avec 3 cols bien marqués
+    const trend = Math.sin(t * Math.PI) * 1800; // grande bosse générale
+    const col1  = Math.exp(-Math.pow((t - 0.22) / 0.09, 2)) * 900;  // 1er col
+    const col2  = Math.exp(-Math.pow((t - 0.55) / 0.08, 2)) * 1200; // col principal (+ haut)
+    const col3  = Math.exp(-Math.pow((t - 0.80) / 0.07, 2)) * 700;  // 3e col
+    const valley1 = -Math.exp(-Math.pow((t - 0.38) / 0.06, 2)) * 500; // creux entre col1 et col2
+    const valley2 = -Math.exp(-Math.pow((t - 0.68) / 0.05, 2)) * 350; // creux entre col2 et col3
+    const noise = Math.sin(t * Math.PI * 23) * 45 + Math.cos(t * Math.PI * 41) * 25;
+
+    const ele = base + trend + col1 + col2 + col3 + valley1 + valley2 + noise;
+    path.push({ x, z, ele: Math.max(base - 50, ele) });
+    eles.push(Math.max(base - 50, ele));
+  }
+
+  const mn  = Math.min(...eles);
+  const mx  = Math.max(...eles);
+  const prof = smoothArr(eles.map(e => (e - mn) / (mx - mn || 1)), Math.max(2, S.smooth));
+
+  // Stocker path et profile dans S pour que le profil SVG soit visible
+  S.path2D   = path;
+  S.profile  = prof;
+  // Fake gpxPts avec les altitudes pour le tooltip
+  S.gpxPts = path.map(p => ({
+    lat: p.z * 0.001 + 45.8,
+    lon: p.x * 0.001 + 6.8,
+    ele: p.ele,
+  }));
+
+  // Afficher le profil altimétrique et les stats de démo
+  const altMax = Math.round(mx);
+  const altMin = Math.round(mn);
+  let dplus = 0;
+  for(let i = 1; i < eles.length; i++){
+    const dh = eles[i] - eles[i-1]; if(dh > 0) dplus += dh;
+  }
+  // Distance approximative
+  let dist = 0;
+  for(let i = 1; i < path.length; i++){
+    dist += Math.hypot(path[i].x - path[i-1].x, path[i].z - path[i-1].z);
+  }
+  const distKm = (dist / (1/MM) * 0.001).toFixed(1); // convert scene units → km approx
+
+  el('g-dist').textContent  = '~18.4 km';
+  el('g-dplus').textContent = '+' + Math.round(dplus * MM * 1000) + ' m';
+  el('g-amax').textContent  = altMax + ' m';
+  el('g-pts').textContent   = N;
+
+  el('gpx-grid').classList.add('show');
+  el('prof-wrap').style.display = 'block';
+  drawSVGProfile();
+
+  // Construire la maquette 3D
+  const spmm   = getSPMM(path);
+  S.buildSPMM  = spmm;
+  const traceH = S.traceMaxH * spmm;
+  const halfW  = (S.traceW / 2) * spmm;
+  const baseH  = S.baseH * spmm;
+  const baseW  = S.baseW * spmm;
+  const cx = path.reduce((s,p)=>s+p.x,0)/path.length;
+  const cz = path.reduce((s,p)=>s+p.z,0)/path.length;
+  makeTrace(path, prof, false, traceH, halfW, cx, cz); // closed=false (tracé ouvert)
+  if(!S.noBase) makeBase (path, false, halfW, baseH, baseW, cx, cz);
+  if(S.notchEnabled) buildNotch(cx, cz);
+}
+
+// ── ANIMATE ───────────────────────────────────────────────────────────────
+function animate(){
+  requestAnimationFrame(animate);
+  resizeAll();
+  if(S.autoRot&&!isDrag) S.rotY+=.004;
+  const cx=S.camDist*Math.sin(S.rotY)*Math.cos(S.rotX);
+  const cy=S.camDist*Math.sin(S.rotX);
+  const cz=S.camDist*Math.cos(S.rotY)*Math.cos(S.rotX);
+  camP.position.set(cx,cy,cz); camP.lookAt(0,0,0);
+  el('hud-r').textContent=Math.round(S.rotY*180/Math.PI)+'°';
+  el('hud-z').textContent=S.camDist.toFixed(1);
+  rendP.render(scene,camP);
+  drawDimensions();
+}
+
+// ── COLORS ────────────────────────────────────────────────────────────────
+// Fully opaque, high-contrast colors
+const TC=['#D72638','#F4821F','#1B998B','#3A86FF','#8338EC','#FFBE0B','#06D6A0','#111111'];
+const BC=['#222222','#6B3A2A','#8B6F47','#888880','#1A3A2A','#CCCCBB','#2A1A3A','#8B1A1A'];
+
+function buildSwatches(){
+  const make=(cid,cols,setter)=>{
+    const c=el(cid);
+    cols.forEach((hex,i)=>{
+      const d=document.createElement('div');
+      d.className='sw'+(i===0?' on':'');
+      d.style.background=hex; d.title=hex;
+      d.onclick=()=>{
+        c.querySelectorAll('.sw').forEach(s=>s.classList.remove('on'));
+        d.classList.add('on'); setter(hex);
+      };
+      c.appendChild(d);
+    });
+  };
+  make('sw-trace',TC,setTC);
+  make('sw-base',BC,setBC);
+}
+
+function setTC(hex){
+  S.traceColor=hex;
+  const m=scene?.getObjectByName('trace'); if(m) m.material.color.set(hex);
+  drawSVGProfile();
+}
+function setBC(hex){
+  S.baseColor=hex;
+  const m=scene?.getObjectByName('base'); if(m) m.material.color.set(hex);
+}
+
+function isNearLoop(){
+  // Retourne true si le tracé forme une boucle quasi-fermée
+  // = distance entre début et fin < 25% de la longueur totale du tracé
+  var pts = S.path2D;
+  if(!pts || pts.length < 3) return false;
+  var last = pts.length - 1;
+  var dx = pts[last].x - pts[0].x;
+  var dz = pts[last].z - pts[0].z;
+  var gap = Math.hypot(dx, dz);
+  // Longueur totale
+  var total = 0;
+  for(var i = 1; i < pts.length; i++){
+    total += Math.hypot(pts[i].x - pts[i-1].x, pts[i].z - pts[i-1].z);
+  }
+  return gap < total * 0.25;
+}
+
+function updateClosedBaseAvailability(){
+  var row   = el('row-closed');
+  var hint  = el('hint-closed');
+  var avail = isNearLoop();
+  if(!row) return;
+  if(avail){
+    row.style.opacity = '1';
+    row.style.pointerEvents = 'auto';
+    if(hint) hint.textContent = 'Remplit l\'intérieur du tracé';
+  } else {
+    row.style.opacity = '0.35';
+    row.style.pointerEvents = 'none';
+    if(S.baseClosed){
+      S.baseClosed = false;
+      el('tgl-closed').classList.remove('on');
+    }
+    if(hint) hint.textContent = 'Disponible uniquement pour les tracés en boucle';
+  }
+}
+
+function toggleClosedBase(){
+  if(!isNearLoop()) return;
+  S.baseClosed = !S.baseClosed;
+  el('tgl-closed').classList.toggle('on', S.baseClosed);
+  rebuild();
+}
+
+
+
+function toggleNoBase(){
+  S.noBase = !S.noBase;
+  el('tgl-nobase').classList.toggle('on', S.noBase);
+  el('socle-opts').style.display = S.noBase ? 'none' : 'block';
+  el('sec-base-color').style.display = S.noBase ? 'none' : 'block';
+  // Encoche reste visible — peut s'attacher au tracé
+  rebuild();
+}
+
+// ── CAMERA ────────────────────────────────────────────────────────────────
+function setView(v){
+  const views={iso:{rotX:.5,rotY:.65,d:7},top:{rotX:1.44,rotY:0,d:9}};
+  if(views[v]){S.rotX=views[v].rotX;S.rotY=views[v].rotY;S.camDist=views[v].d;}
+}
+function resetCam(){S.rotX=.45;S.rotY=.3;S.camDist=7;}
+function toggleAuto(){S.autoRot=!S.autoRot;el('btn-auto').classList.toggle('on',S.autoRot);}
+
+// ── EXPORT PNG ────────────────────────────────────────────────────────────
+function exportPNG(){
+  rendP.render(scene,camP);
+  const a=document.createElement('a');
+  a.href=rendP.domElement.toDataURL('image/png');
+  a.download='trace3d.png'; a.click();
+}
+
+// ── EXPORT STL (binary) ───────────────────────────────────────────────────
+// Binary STL: 80b header + 4b tri count + 50b/tri
+// Exports trace + base merged. Properly applies world matrix.
+function exportSTL(){
+  var names = ['trace'];
+  if(!S.noBase) names.push('base');
+  if(S.notchEnabled) names.push('notch');
+  const meshes=names.map(n=>scene.getObjectByName(n)).filter(Boolean);
+  if(!meshes.length){
+    alert('Aucune maquette à exporter.\nChargez un GPX ou attendez que la démo se charge.');
+    return;
+  }
+
+  // Calculer le scale réel pour atteindre la taille choisie
+  const ms = getModelScale();
+  if(!ms){ alert('Impossible de calculer la taille du modèle.'); return; }
+
+  const SCALE = ms.scaleMM; // scene units → mm réels avec proportion conservée
+
+  // Info pour l'utilisateur
+  const wCm = (ms.realW_mm/10).toFixed(1);
+  const dCm = (ms.realD_mm/10).toFixed(1);
+  const hCm = (ms.realH_mm/10).toFixed(1);
+  console.log(`Export STL : ${wCm} × ${dCm} × ${hCm} cm (format ${S.sizeFormat})`);
+
+  // Count total triangles
+  let nTri = 0;
+  meshes.forEach(m => {
+    const idx = m.geometry.index;
+    nTri += idx ? Math.floor(idx.count / 3) : Math.floor(m.geometry.attributes.position.count / 3);
+  });
+  if(nTri === 0){ alert('Géométrie vide, impossible d\'exporter.'); return; }
+
+  // Binary STL: 80 header + 4 tri count + 50 per triangle
+  const buf = new ArrayBuffer(84 + nTri * 50);
+  const dv  = new DataView(buf);
+
+  // 80-byte ASCII header
+  const hdr = `Trace3D ${wCm}x${dCm}x${hCm}cm format=${S.sizeFormat}                              `;
+  for(let i = 0; i < 80; i++) dv.setUint8(i, (hdr.charCodeAt(i) || 32) & 0xFF);
+
+  // Triangle count as uint32 LE
+  dv.setUint32(80, nTri, true);
+
+  let off = 84;
+
+  const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3();
+  const AB = new THREE.Vector3(), AC = new THREE.Vector3(), NV = new THREE.Vector3();
+
+  meshes.forEach(m => {
+    m.updateMatrixWorld(true);
+    const geo  = m.geometry;
+    const posA = geo.attributes.position;
+    const idxA = geo.index;
+    const mat  = m.matrixWorld;
+    const nF   = idxA ? Math.floor(idxA.count / 3) : Math.floor(posA.count / 3);
+
+    for(let t = 0; t < nF; t++){
+      const ai = idxA ? idxA.getX(t*3)   : t*3;
+      const bi = idxA ? idxA.getX(t*3+1) : t*3+1;
+      const ci = idxA ? idxA.getX(t*3+2) : t*3+2;
+
+      vA.fromBufferAttribute(posA, ai).applyMatrix4(mat).multiplyScalar(SCALE);
+      vB.fromBufferAttribute(posA, bi).applyMatrix4(mat).multiplyScalar(SCALE);
+      vC.fromBufferAttribute(posA, ci).applyMatrix4(mat).multiplyScalar(SCALE);
+
+      AB.subVectors(vB, vA);
+      AC.subVectors(vC, vA);
+      NV.crossVectors(AB, AC).normalize();
+
+      // Normal XYZ
+      dv.setFloat32(off, NV.x, true); off += 4;
+      dv.setFloat32(off, NV.y, true); off += 4;
+      dv.setFloat32(off, NV.z, true); off += 4;
+      // 3 vertices
+      [vA, vB, vC].forEach(v => {
+        dv.setFloat32(off, v.x, true); off += 4;
+        dv.setFloat32(off, v.y, true); off += 4;
+        dv.setFloat32(off, v.z, true); off += 4;
+      });
+      // Attribute byte count = 0
+      dv.setUint16(off, 0, true); off += 2;
+    }
+  });
+
+  // Trigger download
+  const blob = new Blob([buf], { type: 'application/octet-stream' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'trace3d.stl';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+function cmdOrder(){
+  const ms = getModelScale();
+  var prices = {keyring:10, normal:25, xl:50, custom:25};
+  var price = prices[S.sizeFormat] || 25;
+
+  // Collecter les points GPX (max 30 pts, format compact: lat,lon,alt|lat,lon,alt|...)
+  var gpxCompact = '';
+  var nbPts = 0;
+  if(S.gpxPts && S.gpxPts.length > 0){
+    var step = Math.max(1, Math.floor(S.gpxPts.length / 30));
+    var parts = [];
+    for(var i = 0; i < S.gpxPts.length; i += step){
+      var p = S.gpxPts[i];
+      parts.push(
+        (Math.round(p.lat*100000)/100000) + ',' +
+        (Math.round(p.lon*100000)/100000) + ',' +
+        Math.round(p.ele)
+      );
+    }
+    gpxCompact = parts.join('|');
+    nbPts = parts.length;
+  }
+
+  var dims = ms ? (ms.realW_mm/10).toFixed(1)+'x'+(ms.realD_mm/10).toFixed(1)+'x'+(ms.realH_mm/10).toFixed(1)+' cm' : '-';
+
+  // ENVOYER AU PARENT SHOPIFY EN PREMIER (avant le download STL qui peut bloquer)
+  if(window.parent !== window){
+    window.parent.postMessage({
+      type: 'ADD_TO_CART',
+      config: {
+        traceMaxH:S.traceMaxH, traceW:S.traceW, smooth:S.smooth,
+        traceColor:S.traceColor, baseColor:S.baseColor,
+        baseW:S.baseW, baseH:S.baseH, baseSmooth:S.baseSmooth,
+        baseClosed:S.baseClosed,
+        sizeFormat:S.sizeFormat, sizeW:S.sizeW, sizeH:S.sizeH,
+        realDims:dims,
+        notchEnabled:S.notchEnabled, notchDiam:S.notchDiam, notchT:S.notchT,
+        chevronEnabled:S.chevronEnabled, chevronLen:S.chevronLen, chevronDepth:S.chevronDepth,
+        gpxPoints:gpxCompact, nbPts:nbPts, price:price
+      }
+    }, '*');
+    // Télécharger le STL après un petit délai (laisse le postMessage partir)
+    setTimeout(function(){ exportSTL(); }, 500);
+    return;
+  }
+
+  // Mode standalone : télécharger STL + fichier résumé
+  exportSTL();
+
+  var summary = '=== COMMANDE MAQUETTE 3D ALTICRAFT ===\n';
+  summary += 'Prix: ' + price + ' EUR\n';
+  summary += 'Format: ' + S.sizeFormat + '\n';
+  summary += 'Dimensions: ' + dims + '\n';
+  summary += 'Cible: ' + S.sizeW + 'x' + S.sizeH + ' mm\n\n';
+  summary += 'TRACE: ' + S.traceMaxH + 'mm haut, ' + S.traceW + 'mm large, lissage ' + S.smooth + ', ' + S.traceColor + '\n';
+  summary += 'SOCLE: ' + S.baseW + 'mm bande, ' + S.baseH + 'mm epais, lissage ' + S.baseSmooth + ', ' + S.baseColor + '\n';
+  summary += 'Ferme: ' + (S.baseClosed ? 'Oui' : 'Non') + '\n';
+  if(S.notchEnabled) summary += 'ENCOCHE: ' + S.notchDiam + 'mm, pos ' + Math.round(S.notchT*100) + '%\n';
+  if(S.chevronEnabled) summary += 'CHEVRON SOMMET: largeur ' + S.chevronLen + 'mm, profondeur ' + S.chevronDepth + 'mm\n';
+  summary += '\nPOINTS GPX (' + nbPts + ' pts, format: lat,lon,alt):\n';
+  summary += gpxCompact.split('|').join('\n') + '\n';
+
+  setTimeout(function(){
+    var blob = new Blob([summary], {type:'text/plain;charset=utf-8'});
+    var u = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = u; a.download = 'commande-alticraft.txt';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(u); }, 2000);
+  }, 600);
+}
+
+// ── SIZE SELECTOR (sliders liés par le ratio du modèle) ─────────────────
+function selectSize(card, format, w, h){
+  document.querySelectorAll('.size-card').forEach(c => c.classList.remove('on'));
+  card.classList.add('on');
+  S.sizeFormat = format;
+  S.sizeW = w; S.sizeH = h;
+  el('range-sw').value = w; el('v-sw').textContent = w + ' mm';
+  el('range-sh').value = h; el('v-sh').textContent = h + ' mm';
+  updatePrice();
+}
+
+function updatePrice(){
+  var prices = {keyring:10, normal:25, xl:50, custom:25};
+  var p = prices[S.sizeFormat] || 25;
+  var t1 = el('btn-order-top'), t2 = el('btn-order-bottom');
+  if(t1) t1.textContent = 'Commander \u00B7 ' + p + ' \u20AC';
+  if(t2) t2.textContent = '\uD83D\uDED2 Commander \u00B7 ' + p + ' \u20AC';
+}
+
+// Quand l'utilisateur bouge un slider, l'autre suit selon le ratio naturel du modèle
+function setSize(which, value){
+  const bbox = getModelBBox();
+  if(!bbox){
+    // Pas encore de modèle — juste mettre à jour la valeur
+    if(which === 'w'){ S.sizeW = value; el('v-sw').textContent = value + ' mm'; }
+    else             { S.sizeH = value; el('v-sh').textContent = value + ' mm'; }
+    return;
+  }
+
+  const sz = new THREE.Vector3();
+  bbox.getSize(sz);
+  // Ratio du modèle dans le plan horizontal (X = largeur, Z = longueur)
+  const modelW_units = sz.x;
+  const modelD_units = sz.z;
+  const ratio = modelD_units / modelW_units;
+
+  if(which === 'w'){
+    S.sizeW = value;
+    S.sizeH = Math.round(value * ratio);
+    // Clamp dans les bornes du slider
+    S.sizeH = Math.max(30, Math.min(300, S.sizeH));
+    el('v-sw').textContent = S.sizeW + ' mm';
+    el('v-sh').textContent = S.sizeH + ' mm';
+    el('range-sh').value = S.sizeH;
+  } else {
+    S.sizeH = value;
+    S.sizeW = Math.round(value / ratio);
+    S.sizeW = Math.max(30, Math.min(300, S.sizeW));
+    el('v-sh').textContent = S.sizeH + ' mm';
+    el('v-sw').textContent = S.sizeW + ' mm';
+    el('range-sw').value = S.sizeW;
+  }
+
+  // Désélectionne les presets quand l'utilisateur ajuste manuellement
+  document.querySelectorAll('.size-card').forEach(c => c.classList.remove('on'));
+  S.sizeFormat = 'custom';
+  updatePrice();
+}
+
+function toggleSwitch_notch(){
+  S.notchEnabled = !S.notchEnabled;
+  el('tgl-notch').classList.toggle('on', S.notchEnabled);
+  el('notch-opts').style.display = S.notchEnabled ? 'block' : 'none';
+  rebuild();
+}
+
+function toggleSwitch_chevron(){
+  S.chevronEnabled = !S.chevronEnabled;
+  el('tgl-chevron').classList.toggle('on', S.chevronEnabled);
+  el('chevron-opts').style.display = S.chevronEnabled ? 'block' : 'none';
+  rebuild();
+}
+
+// Retourne le bbox réel du modèle en unités scène
+function getModelBBox(){
+  const bbox = new THREE.Box3();
+  ['trace','base'].forEach(n => {
+    const m = scene?.getObjectByName(n);
+    if(m) bbox.expandByObject(m);
+  });
+  return bbox.isEmpty() ? null : bbox;
+}
+
+// Calcule le facteur d'échelle (scene units → mm) pour que les dimensions
+// des sliders correspondent EXACTEMENT aux mm dans le STL.
+// Utilise la même référence que getSPMM() (emprise du tracé) pour la cohérence.
+function getModelScale(){
+  const bbox = getModelBBox();
+  if(!bbox) return null;
+
+  // Utiliser EXACTEMENT le scale mémorisé lors de la construction
+  // → garantit que 2mm slider = 2.000mm dans le STL (zéro dérive)
+  var spmm = S.buildSPMM || getSPMM(S.path2D);
+  var scaleMM = 1 / spmm;
+
+  const size = new THREE.Vector3();
+  bbox.getSize(size);
+
+  return {
+    scaleMM: scaleMM,
+    realW_mm: size.x * scaleMM,
+    realD_mm: size.z * scaleMM,
+    realH_mm: size.y * scaleMM,
+    targetW_mm: S.sizeW,
+    targetH_mm: S.sizeH,
+  };
+}
+
+// ── ENCOCHE PORTE-CLÉ ────────────────────────────────────────────────────
+function buildNotch(cx, cz){
+  var scenePerMM = getSPMM(S.path2D);
+
+  // ── Spine de référence ────────────────────────────────────────────────
+  var spine, edgeOff, yT, yB;
+  if(S.noBase){
+    if(!S.path2D || S.path2D.length < 3) return;
+    spine = S.path2D.map(function(p){ return {x:p.x-cx, z:p.z-cz}; });
+    edgeOff = (S.traceW/2) * scenePerMM;
+    yT = 0;
+    yB = -(S.baseH||4) * scenePerMM;
+  } else {
+    if(!S.baseSpine || S.baseSpine.length < 3) return;
+    spine = S.baseSpine;
+    edgeOff = S.baseOff;
+    yT = 0;
+    yB = -S.baseHeight;
+  }
+  var N = spine.length;
+
+  // Longueurs cumulées
+  var cum = [0];
+  for(var i=1;i<N;i++)
+    cum.push(cum[i-1] + Math.hypot(spine[i].x-spine[i-1].x, spine[i].z-spine[i-1].z));
+  var L = cum[N-1];
+  if(L < 1e-4) return;
+
+  // ── Dimensions FIXES (ne changent jamais) ─────────────────────────────
+  var diam   = S.notchDiam * scenePerMM;
+  var holeR  = diam * 0.5;
+  var ringR  = diam + 1.0 * scenePerMM;  // 1mm de bordure
+  var tabHW  = ringR - holeR;          // largeur du pont = épaisseur de la paroi seulement
+  var tabLen = -(ringR - holeR);  // cercle au maximum collé au socle
+
+  // Vérification taille minimale
+  if(tabHW * 2 > L * 0.9) return;
+
+  // ── Clamper la position pour que la forme fixe reste sur le tracé ─────
+  var margin  = tabHW * 1.05;
+  var centerD = margin + S.notchT * (L - 2*margin);
+
+  // ── UN SEUL point + UNE SEULE tangente ───────────────────────────────
+  // Interpoler le point sur la spine
+  var d = Math.max(0, Math.min(L, centerD));
+  var i = 0;
+  while(i < N-2 && cum[i+1] < d) i++;
+  var f = (d - cum[i]) / ((cum[i+1]-cum[i])||1);
+  var Cx = spine[i].x + (spine[i+1].x - spine[i].x)*f;
+  var Cz = spine[i].z + (spine[i+1].z - spine[i].z)*f;
+
+  // Tangente sur une courte fenêtre (stable dans les courbes)
+  var ww = Math.min(tabHW*0.4, L*0.02) || 0.01;
+  function ptAt(dd){
+    dd = Math.max(0, Math.min(L, dd));
+    var j=0; while(j<N-2 && cum[j+1]<dd) j++;
+    var ff=(dd-cum[j])/((cum[j+1]-cum[j])||1);
+    return [spine[j].x+(spine[j+1].x-spine[j].x)*ff,
+            spine[j].z+(spine[j+1].z-spine[j].z)*ff];
+  }
+  var pA = ptAt(centerD-ww), pB = ptAt(centerD+ww);
+  var Tx = pB[0]-pA[0], Tz = pB[1]-pA[1];
+  var Tl = Math.hypot(Tx,Tz)||1; Tx/=Tl; Tz/=Tl;
+  // Normale = perpendiculaire à la tangente
+  var Nx = -Tz, Nz = Tx;
+
+  // Sens extérieur : le côté le plus éloigné du centroïde de la spine
+  var ctrx=0, ctrz=0;
+  for(var k=0;k<N;k++){ ctrx+=spine[k].x; ctrz+=spine[k].z; }
+  ctrx/=N; ctrz/=N;
+  var d1 = Math.hypot(Cx+Nx*edgeOff-ctrx, Cz+Nz*edgeOff-ctrz);
+  var d2 = Math.hypot(Cx-Nx*edgeOff-ctrx, Cz-Nz*edgeOff-ctrz);
+  if(d2 > d1){ Nx=-Nx; Nz=-Nz; }
+
+  // ── Forme FIXE en coordonnées locales (s, u) ─────────────────────────
+  // u=0 = centre de la spine. Bord du socle = u=edgeOff.
+  // Toutes les positions u sont décalées de edgeOff.
+
+  var uBase  = edgeOff - 0.6 * scenePerMM;  // 0.6mm dans le socle
+  var uHead  = edgeOff + tabLen + ringR;  // centre du cercle
+
+  var ARC  = 48;
+  var HOLE = 48;
+
+  var prof = [];
+  prof.push([-tabHW, uBase]);   // bas gauche (dans le socle)
+  prof.push([ tabHW, uBase]);   // bas droit
+
+  // Point de tangence entre le pont et le cercle
+  var tangentY = uHead - Math.sqrt(Math.max(0, ringR*ringR - tabHW*tabHW));
+  prof.push([ tabHW, tangentY]);
+
+  // Tour COMPLET CCW (360°) depuis le point de tangence droit
+  var aStart = Math.atan2(tangentY - uHead, tabHW);
+  for(var k=1; k<ARC; k++){
+    var a = aStart + Math.PI*2*k/ARC;
+    prof.push([Math.cos(a)*ringR, uHead + Math.sin(a)*ringR]);
+  }
+  prof.push([-tabHW, tangentY]);
+
+  // Trou — sens opposé au contour extérieur (CCW→CW)
+  var hole = [];
+  for(var h=0; h<HOLE; h++){
+    var ah = (h/HOLE)*Math.PI*2;  // CCW d'abord
+    hole.push([Math.cos(ah)*holeR, uHead + Math.sin(ah)*holeR]);
+  }
+  // Vérifier que le contour extérieur est CCW
+  var areaOuter=0;
+  for(var i=0;i<prof.length;i++){var p=prof[i],q=prof[(i+1)%prof.length];areaOuter+=p[0]*q[1]-q[0]*p[1];}
+  if(areaOuter<0) prof.reverse();
+  // Le trou doit être CW (opposé)
+  var areaHole=0;
+  for(var i=0;i<hole.length;i++){var p=hole[i],q=hole[(i+1)%hole.length];areaHole+=p[0]*q[1]-q[0]*p[1];}
+  if(areaHole>0) hole.reverse();
+
+  // ── Triangulation EN LOCAL (fiable car non-tourné) ────────────────────
+  var oN = prof.length;
+  var all2D = prof.concat(hole);
+  var flat = [];
+  for(var i=0;i<all2D.length;i++) flat.push(all2D[i][0], all2D[i][1]);
+  var tri = earcut(flat, [oN]);
+  if(!tri || !tri.length){ console.warn('notch earcut failed'); return; }
+
+  // ── Projection rigide : local (s,u) → monde XZ ───────────────────────
+  // world = C + s×Tangente + u×Normale
+  function toW(s, u){
+    return [Cx + s*Tx + u*Nx,  Cz + s*Tz + u*Nz];
+  }
+  var allW = all2D.map(function(p){ return toW(p[0], p[1]); });
+
+  // ── Géométrie 3D ──────────────────────────────────────────────────────
+  var M = allW.length;
+  var pos = [], idx = [];
+  for(var i=0;i<M;i++) pos.push(allW[i][0], yT, allW[i][1]);
+  for(var i=0;i<M;i++) pos.push(allW[i][0], yB, allW[i][1]);
+
+  for(var i=0;i<tri.length;i+=3) idx.push(tri[i],tri[i+1],tri[i+2]);
+  for(var i=0;i<tri.length;i+=3) idx.push(M+tri[i+2],M+tri[i+1],M+tri[i]);
+  for(var i=0;i<oN;i++){
+    var ni=(i+1)%oN;
+    idx.push(i,ni,M+i, ni,M+ni,M+i);
+  }
+  for(var i=0;i<HOLE;i++){
+    var ni=(i+1)%HOLE, a=oN+i, b=oN+ni;
+    idx.push(a,M+a,b, b,M+a,M+b);
+  }
+
+  var geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+
+  var color = S.noBase ? S.traceColor : S.baseColor;
+  var mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    color: color, side: THREE.DoubleSide,
+  }));
+  mesh.name = 'notch';
+  scene.add(mesh);
+}
+
+
+let dimCtx = null;
+let dimHideTimer = null;
+let dimFadeTimer = null;
+let dimVisible = false;
+let dimOpacity = 1;
+
+function showDimensions(){
+  dimOpacity = 1;
+  dimVisible = true;
+  clearTimeout(dimHideTimer);
+  clearInterval(dimFadeTimer);
+  drawDimensions();
+  // Après 5s, fade sur 0.8s
+  dimHideTimer = setTimeout(function(){
+    var steps = 40;
+    var step = 0;
+    dimFadeTimer = setInterval(function(){
+      step++;
+      dimOpacity = 1 - step/steps;
+      if(step >= steps){
+        clearInterval(dimFadeTimer);
+        dimOpacity = 0;
+        dimVisible = false;
+        const c = el('cv-dim');
+        if(c){ const ctx = c.getContext('2d'); ctx.clearRect(0,0,c.width,c.height); }
+        return;
+      }
+      drawDimensions();
+    }, 20); // 40 × 20ms = 0.8s
+  }, 5000);
+}
+
+function initDimCanvas(){
+  const c = el('cv-dim');
+  dimCtx = c.getContext('2d');
+}
+
+function drawDimensions(){
+  const c = el('cv-dim');
+  const pane = el('pane-p');
+  if(!c || !pane || !dimCtx) return;
+  if(!dimVisible){ dimCtx.clearRect(0,0,c.width,c.height); return; }
+
+  // Synchroniser la taille du canvas overlay avec le pane
+  const w = pane.clientWidth, h = pane.clientHeight;
+  if(c.width !== w || c.height !== h){ c.width = w; c.height = h; }
+  dimCtx.clearRect(0, 0, w, h);
+  dimCtx.globalAlpha = dimOpacity;
+
+  const ms = getModelScale();
+  let sW = '—', sD = '—';
+  if(ms){
+    const rW = ms.realW_mm, rD = ms.realD_mm;
+    const planMax = Math.max(rW, rD), planMin = Math.min(rW, rD);
+    const tgtMax = Math.max(S.sizeW, S.sizeH);
+    const tgtMin = Math.min(S.sizeW, S.sizeH);
+    const fit = Math.min(tgtMax/planMax, tgtMin/planMin);
+    sW = (rW*fit/10).toFixed(1) + ' cm';
+    sD = (rD*fit/10).toFixed(1) + ' cm';
+  }
+
+  // Mettre à jour le label dans le panel
+  const rd = el('real-dims');
+  if(rd && ms){
+    const rW = ms.realW_mm, rD = ms.realD_mm, rH = ms.realH_mm;
+    const planMax = Math.max(rW, rD), planMin = Math.min(rW, rD);
+    const fit = Math.min(Math.max(S.sizeW,S.sizeH)/planMax,
+                         Math.min(S.sizeW,S.sizeH)/planMin);
+    rd.textContent = `${(rW*fit/10).toFixed(1)} × ${(rD*fit/10).toFixed(1)} × ${(rH*fit/10).toFixed(1)} cm`;
+  }
+
+  // ── Cotations calées sur la projection écran du modèle ────────────────
+  // (au lieu de fractions fixes du canvas, on projette le bbox 3D réel
+  //  du modèle via la caméra courante → la cote suit le zoom/la rotation)
+  const PAD    = 18;   // marge depuis le bord du canvas
+  const GAP    = 14;   // écart entre le modèle projeté et la barre de cote
+  const COL    = `rgba(28,26,23,${(dimOpacity*0.85).toFixed(2)})`;
+  const FONT   = '600 12px DM Mono, monospace';
+
+  dimCtx.strokeStyle = COL;
+  dimCtx.fillStyle   = COL;
+  dimCtx.lineWidth   = 1.5;
+  dimCtx.font        = FONT;
+  dimCtx.textAlign   = 'center';
+  dimCtx.textBaseline = 'middle';
+
+  function tick(x1,y1,x2,y2){ dimCtx.beginPath();dimCtx.moveTo(x1,y1);dimCtx.lineTo(x2,y2);dimCtx.stroke(); }
+  function lbl(txt, x, y){ dimCtx.fillText(txt, x, y); }
+
+  // Bbox 3D réelle du modèle (scène), projetée en coordonnées écran (px)
+  const bbox3 = getModelBBox();
+  let sx1 = w*0.25, sx2 = w*0.75, sy1 = h*0.25, sy2 = h*0.75; // fallback si pas de modèle
+  if(bbox3 && camP){
+    const min = bbox3.min, max = bbox3.max;
+    const corners = [
+      [min.x,min.y,min.z],[min.x,min.y,max.z],[min.x,max.y,min.z],[min.x,max.y,max.z],
+      [max.x,min.y,min.z],[max.x,min.y,max.z],[max.x,max.y,min.z],[max.x,max.y,max.z],
+    ];
+    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+    corners.forEach(([x,y,z])=>{
+      const p = new THREE.Vector3(x,y,z).project(camP);
+      const sx = (p.x+1)/2*w;
+      const sy = (1-p.y)/2*h;
+      if(sx<minX) minX=sx; if(sx>maxX) maxX=sx;
+      if(sy<minY) minY=sy; if(sy>maxY) maxY=sy;
+    });
+    if(isFinite(minX) && isFinite(maxX) && isFinite(minY) && isFinite(maxY)){
+      sx1=minX; sx2=maxX; sy1=minY; sy2=maxY;
+    }
+  }
+
+  // ── Largeur : barre horizontale juste sous l'empreinte projetée du modèle ─
+  const wY  = Math.min(h - PAD, sy2 + GAP);
+  const wX1 = sx1, wX2 = sx2;
+  tick(wX1, wY-6, wX1, wY+6); // tick gauche
+  tick(wX2, wY-6, wX2, wY+6); // tick droit
+  tick(wX1, wY, wX2, wY);     // barre
+  drawArrow(dimCtx, wX2, wY, wX1, wY);
+  drawArrow(dimCtx, wX1, wY, wX2, wY);
+  lbl('L: ' + sW, (wX1+wX2)/2, wY - 14);
+
+  // ── Profondeur : barre verticale juste à droite de l'empreinte projetée ──
+  const dX  = Math.min(w - PAD, sx2 + GAP);
+  const dY1 = sy1, dY2 = sy2;
+  tick(dX-6, dY1, dX+6, dY1); // tick haut
+  tick(dX-6, dY2, dX+6, dY2); // tick bas
+  tick(dX, dY1, dX, dY2);     // barre
+  drawArrow(dimCtx, dX, dY2, dX, dY1);
+  drawArrow(dimCtx, dX, dY1, dX, dY2);
+  dimCtx.save();
+  dimCtx.translate(dX - 20, (dY1+dY2)/2);
+  dimCtx.rotate(-Math.PI/2);
+  dimCtx.fillText('l: ' + sD, 0, 0);
+  dimCtx.restore();
+
+  dimCtx.globalAlpha = 1;
+}
+
+function drawArrow(ctx, fromX, fromY, toX, toY){
+  const dx = toX - fromX, dy = toY - fromY;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx/len, uy = dy/len;
+  const aLen = 6, aW = 3;
+  ctx.beginPath();
+  ctx.moveTo(toX, toY);
+  ctx.lineTo(toX - ux*aLen - uy*aW, toY - uy*aLen + ux*aW);
+  ctx.lineTo(toX - ux*aLen + uy*aW, toY - uy*aLen - ux*aW);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function dimLabel(ctx, text, x, y){
+  const pad = 5;
+  const tw = ctx.measureText(text).width;
+  ctx.fillStyle = 'rgba(255,255,255,0.88)';
+  ctx.fillRect(x - tw/2 - pad, y - 8, tw + pad*2, 16);
+  ctx.fillStyle = 'rgba(28,26,23,0.85)';
+  ctx.fillText(text, x, y);
+}
+
+// ── MOBILE PANEL TOGGLE ───────────────────────────────────────────────────
+function togglePanel(){
+  const panel  = document.querySelector('.panel');
+  const toggle = el('panel-toggle');
+  const icon   = el('toggle-icon');
+  const isOpen = panel.classList.toggle('open');
+  toggle.classList.toggle('open', isOpen);
+  // Arrow points right (→) when closed, left (←) when open
+  icon.style.transform = isOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+  icon.style.transition = 'transform 0.25s ease';
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded',()=>{
+  buildSwatches();
+  initThree();
+  updateClosedBaseAvailability();
+});
+</script>
+</body>
+</html>
